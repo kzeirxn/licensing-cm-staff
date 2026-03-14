@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Portal — Taco Licensing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { surface: '#13131f', base: '#0a0a0f' }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        body { background: #0a0a0f; color: #e5e7eb; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+        .toast {
+            position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999;
+            display: flex; align-items: center; gap: 0.625rem;
+            padding: 0.75rem 1rem; border-radius: 0.75rem;
+            font-size: 0.875rem; font-weight: 500;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            animation: slideIn 0.2s ease, fadeOut 0.3s ease 2.7s forwards;
+            pointer-events: none; max-width: 340px;
+        }
+        .toast.success { background: #13131f; border: 1px solid rgba(52,211,153,0.3); color: #34d399; }
+        .toast.error   { background: #13131f; border: 1px solid rgba(239,68,68,0.3);  color: #f87171; }
+        .toast.info    { background: #13131f; border: 1px solid rgba(99,102,241,0.3); color: #a5b4fc; }
+
+        @keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fadeOut { from { opacity:1; } to { opacity:0; pointer-events:none; } }
+        @keyframes spin    { to { transform: rotate(360deg); } }
+        @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+        .sidebar-link {
+            display: flex; align-items: center; gap: 0.625rem;
+            padding: 0.5rem 0.75rem; border-radius: 0.5rem;
+            font-size: 0.875rem; font-weight: 500; color: #6b7280;
+            transition: background 0.15s, color 0.15s;
+            cursor: pointer; border: none; background: none; width: 100%; text-align: left;
+        }
+        .sidebar-link:hover { background: rgba(255,255,255,0.05); color: #e5e7eb; }
+        .sidebar-link.active { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+        .sidebar-link.active svg { color: #818cf8; }
+
+        .stat-card {
+            background: #13131f; border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 1rem; padding: 1.25rem; transition: border-color 0.15s;
+        }
+        .stat-card:hover { border-color: rgba(255,255,255,0.1); }
+
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th {
+            padding: 0.625rem 1rem; text-align: left; font-size: 0.6875rem;
+            font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+            color: #6b7280; background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .data-table th:last-child { text-align: right; }
+        .data-table td {
+            padding: 0.875rem 1rem; font-size: 0.8125rem;
+            border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle;
+        }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table tbody tr { transition: background 0.1s; }
+        .data-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+        .badge {
+            display: inline-flex; align-items: center;
+            padding: 0.2rem 0.55rem; border-radius: 9999px;
+            font-size: 0.6875rem; font-weight: 600;
+        }
+        .badge.active    { background: rgba(52,211,153,0.1);  color: #34d399; border: 1px solid rgba(52,211,153,0.2); }
+        .badge.suspended { background: rgba(239,68,68,0.1);   color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+        .badge.revoked   { background: rgba(239,68,68,0.1);   color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+        .badge.expired   { background: rgba(251,191,36,0.1);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+        .badge.pro       { background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.2); }
+        .badge.free      { background: rgba(255,255,255,0.05);color: #6b7280; border: 1px solid rgba(255,255,255,0.06); }
+        .badge.staff     { background: rgba(52,211,153,0.1);  color: #34d399; border: 1px solid rgba(52,211,153,0.2); }
+        .badge.admin     { background: rgba(251,191,36,0.1);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+
+        .btn {
+            display: inline-flex; align-items: center; gap: 0.375rem;
+            padding: 0.4rem 0.875rem; border-radius: 0.625rem;
+            font-size: 0.8125rem; font-weight: 600;
+            transition: all 0.15s; cursor: pointer; border: none;
+        }
+        .btn-primary { background: #6366f1; color: #fff; }
+        .btn-primary:hover { background: #818cf8; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-ghost { background: transparent; color: #9ca3af; }
+        .btn-ghost:hover { background: rgba(255,255,255,0.05); color: #e5e7eb; }
+        .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-danger { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+        .btn-danger:hover { background: rgba(239,68,68,0.2); }
+        .btn-success { background: rgba(52,211,153,0.1); color: #34d399; border: 1px solid rgba(52,211,153,0.2); }
+        .btn-success:hover { background: rgba(52,211,153,0.2); }
+        .btn-warning { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+        .btn-warning:hover { background: rgba(251,191,36,0.2); }
+        .btn-sm { padding: 0.25rem 0.625rem; font-size: 0.75rem; border-radius: 0.5rem; }
+
+        .form-input {
+            width: 100%; padding: 0.5rem 0.75rem;
+            background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 0.625rem; color: #e5e7eb; font-size: 0.875rem;
+            outline: none; transition: border-color 0.15s, box-shadow 0.15s; box-sizing: border-box;
+        }
+        .form-input:focus { border-color: rgba(99,102,241,0.5); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+        .form-input::placeholder { color: #4b5563; }
+        textarea.form-input { resize: vertical; min-height: 80px; }
+
+        .form-label {
+            display: block; font-size: 0.6875rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 0.375rem;
+        }
+
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px); z-index: 50;
+            display: flex; align-items: center; justify-content: center; padding: 1rem;
+        }
+        .modal-box {
+            background: #13131f; border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 1.25rem; box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+            width: 100%; max-width: 28rem; padding: 1.5rem;
+        }
+        .modal-box.wide { max-width: 36rem; }
+
+        .search-wrap { position: relative; }
+        .search-wrap svg { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #4b5563; pointer-events: none; }
+        .search-wrap .form-input { padding-left: 2.25rem; }
+
+        .skeleton { background: rgba(255,255,255,0.04); border-radius: 0.375rem; animation: pulse 1.5s ease-in-out infinite; }
+
+        .reason-pill {
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            padding: 0.15rem 0.5rem; background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.15); border-radius: 0.375rem;
+            font-size: 0.6875rem; color: #fca5a5;
+            max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+<div id="toast-container" style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;"></div>
+<div id="modal-root"></div>
+
+<div id="app" style="display:flex;min-height:100vh;">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" style="width:15rem;min-height:100vh;background:#0f0f17;border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto;">
+        <div style="padding:1.25rem 1rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div style="display:flex;align-items:center;gap:0.625rem;">
+                <div style="width:2rem;height:2rem;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:0.625rem;display:flex;align-items:center;justify-content:center;font-size:1rem;">🌮</div>
+                <div>
+                    <div style="font-size:0.8125rem;font-weight:700;color:#fff;">Taco Licensing</div>
+                    <div style="font-size:0.6875rem;color:#6b7280;">Staff Portal</div>
+                </div>
+            </div>
+        </div>
+        <nav id="sidebar-nav" style="padding:0.75rem 0.625rem;flex:1;"></nav>
+        <div id="sidebar-user" style="padding:0.75rem;border-top:1px solid rgba(255,255,255,0.06);display:none;">
+            <div style="display:flex;align-items:center;gap:0.625rem;padding:0.625rem 0.75rem;border-radius:0.625rem;background:rgba(255,255,255,0.03);">
+                <img id="sidebar-avatar" src="" alt="" style="width:2rem;height:2rem;border-radius:50%;object-fit:cover;background:#1f2937;">
+                <div style="flex:1;min-width:0;">
+                    <div id="sidebar-username" style="font-size:0.8125rem;font-weight:600;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                    <div style="font-size:0.6875rem;color:#34d399;">Staff</div>
+                </div>
+                <button id="logoutBtn" title="Sign out" style="color:#6b7280;background:none;border:none;cursor:pointer;padding:0.25rem;border-radius:0.375rem;transition:color 0.15s,background 0.15s;" onmouseover="this.style.color='#f87171';this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.color='#6b7280';this.style.background='none'">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column;">
+
+        <!-- Auth screen -->
+        <div id="auth-screen" style="flex:1;display:flex;align-items:center;justify-content:center;padding:2rem;">
+            <div style="max-width:22rem;width:100%;">
+                <div style="text-align:center;margin-bottom:2rem;">
+                    <div style="width:3.5rem;height:3.5rem;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;font-size:1.75rem;margin-bottom:1rem;">🌮</div>
+                    <h1 style="font-size:1.5rem;font-weight:800;color:#fff;margin:0 0 0.375rem;">Staff Portal</h1>
+                    <p style="font-size:0.875rem;color:#6b7280;margin:0;">For Taco Licensing staff members only.</p>
+                </div>
+                <div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1.25rem;padding:1.5rem;">
+                    <button id="loginBtn" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.625rem 1rem;font-size:0.9375rem;">
+                        <svg width="20" height="20" viewBox="0 0 71 55" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M60.105 4.898A58.549 58.549 0 0 0 45.908.415a.22.22 0 0 0-.233.11 40.784 40.784 0 0 0-1.8 3.697c-5.456-.817-10.882-.817-16.22 0a37.37 37.37 0 0 0-1.828-3.697.229.229 0 0 0-.233-.11A58.392 58.392 0 0 0 11.397 4.898a.207.207 0 0 0-.095.082C1.578 18.73-.944 32.144.293 45.39a.244.244 0 0 0 .093.166c6.073 4.46 11.956 7.167 17.729 8.962a.23.23 0 0 0 .249-.082 42.08 42.08 0 0 0 3.627-5.9.225.225 0 0 0-.123-.312 38.772 38.772 0 0 1-5.539-2.638.228.228 0 0 1-.022-.378c.372-.279.744-.569 1.1-.862a.22.22 0 0 1 .23-.031c11.62 5.304 24.198 5.304 35.68 0a.219.219 0 0 1 .233.028c.356.293.728.586 1.103.865a.228.228 0 0 1-.02.378 36.384 36.384 0 0 1-5.54 2.635.226.226 0 0 0-.12.315 47.249 47.249 0 0 0 3.623 5.897.226.226 0 0 0 .249.084c5.8-1.795 11.683-4.502 17.756-8.962a.228.228 0 0 0 .093-.163c1.48-15.315-2.48-28.618-10.498-40.412a.18.18 0 0 0-.093-.084Z" fill="currentColor"/></svg>
+                        Login with Discord
+                    </button>
+                    <p id="auth-error" style="display:none;margin-top:0.75rem;font-size:0.8125rem;color:#f87171;text-align:center;"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Authenticated content -->
+        <div id="main-content" style="flex:1;display:none;flex-direction:column;">
+            <div id="page-header" style="padding:1.5rem 1.5rem 0;border-bottom:1px solid rgba(255,255,255,0.06);"></div>
+            <div id="page-body" style="padding:1.5rem;flex:1;"></div>
+        </div>
+
+    </main>
+</div>
+
+<script>
+    const API_BASE_URL = 'https://app.tacolicensing.org';
+    const STAFF_PORTAL_URL = 'https://staff.licensing.tacogroup.uk';
+    let apiKey = localStorage.getItem('taco_staff_token');
+    let currentUser = null;
+
+    // ─── Toast ────────────────────────────────────────────────────────────────
+    const ICONS = {
+        success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+        error:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+        info:    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    };
+    function toast(message, type = 'success') {
+        const el = document.createElement('div');
+        el.className = `toast ${type}`;
+        el.innerHTML = ICONS[type] + `<span>${message}</span>`;
+        document.getElementById('toast-container').appendChild(el);
+        setTimeout(() => el.remove(), 3200);
+    }
+
+    // ─── OAuth callback ───────────────────────────────────────────────────────
+    (function handleOAuthCallback() {
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token');
+        const error = params.get('error');
+        if (token) {
+            localStorage.setItem('taco_staff_token', token);
+            apiKey = token;
+            window.history.replaceState({}, document.title, window.location.pathname);
+        } else if (error) {
+            document.getElementById('auth-error').textContent = 'Discord login failed. Please try again.';
+            document.getElementById('auth-error').style.display = 'block';
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    })();
+
+    // ─── API helper ───────────────────────────────────────────────────────────
+    async function api(endpoint, method = 'GET', body = null) {
+        const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+        const config = { method, url: `${API_BASE_URL}${endpoint}`, headers };
+        if (body) config.data = body;
+        try {
+            const res = await axios(config);
+            if (res.status === 204) return true;
+            return res.data;
+        } catch (err) {
+            if (err.response?.status === 401 || err.response?.status === 403) { logout(); return null; }
+            toast(err.response?.data?.error || err.response?.data?.message || err.message, 'error');
+            return null;
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('taco_staff_token');
+        apiKey = null; currentUser = null;
+        render();
+    }
+
+    // ─── Utilities ────────────────────────────────────────────────────────────
+    function esc(str) {
+        if (str == null) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function debounce(fn, delay) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), delay); }; }
+    function fmtDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }); }
+    function fmtNum(n) { if (n == null) return '0'; return Number(n).toLocaleString(); }
+
+    // ─── State ────────────────────────────────────────────────────────────────
+    const PAGE_LIMIT = 50;
+    const state = {
+        activeTab: 'dashboard',
+        stats: null,
+        users:      { data: [], currentPage: 1, totalPages: 1, searchTerm: '' },
+        workspaces: { data: [], currentPage: 1, totalPages: 1, searchTerm: '' },
+        products:   { data: [], currentPage: 1, totalPages: 1, searchTerm: '' },
+        licenses:   { data: [], currentPage: 1, totalPages: 1, searchTerm: '' },
+    };
+
+    // ─── Nav ─────────────────────────────────────────────────────────────────
+    const NAV = [
+        { id: 'dashboard',  label: 'Dashboard',  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>' },
+        { id: 'users',      label: 'Users',      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+        { id: 'workspaces', label: 'Workspaces', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>' },
+        { id: 'products',   label: 'Products',   icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>' },
+        { id: 'licenses',   label: 'Licenses',   icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' },
+    ];
+
+    // ─── Shell ────────────────────────────────────────────────────────────────
+    function render() {
+        const authScreen  = document.getElementById('auth-screen');
+        const mainContent = document.getElementById('main-content');
+        const sidebarUser = document.getElementById('sidebar-user');
+        if (apiKey) {
+            authScreen.style.display  = 'none';
+            mainContent.style.display = 'flex';
+            sidebarUser.style.display = 'block';
+            if (currentUser) {
+                document.getElementById('sidebar-username').textContent = currentUser.username;
+                document.getElementById('sidebar-avatar').src = currentUser.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
+            }
+            renderSidebar();
+            renderPage();
+        } else {
+            authScreen.style.display  = 'flex';
+            mainContent.style.display = 'none';
+            sidebarUser.style.display = 'none';
+        }
+    }
+
+    function renderSidebar() {
+        document.getElementById('sidebar-nav').innerHTML = NAV.map(n => `
+            <button class="sidebar-link ${state.activeTab === n.id ? 'active' : ''}" data-tab="${n.id}">
+                ${n.icon}<span>${n.label}</span>
+            </button>
+        `).join('');
+    }
+
+    function renderPage() {
+        switch (state.activeTab) {
+            case 'dashboard':   renderDashboard();   break;
+            case 'users':       renderUsers();        break;
+            case 'workspaces':  renderWorkspaces();   break;
+            case 'products':    renderProducts();     break;
+            case 'licenses':    renderLicenses();     break;
+        }
+    }
+
+    function setHeader(title, subtitle) {
+        document.getElementById('page-header').innerHTML = `
+            <div style="padding-bottom:1.25rem;">
+                <h1 style="font-size:1.375rem;font-weight:800;color:#fff;margin:0 0 0.2rem;">${title}</h1>
+                <p style="font-size:0.8125rem;color:#6b7280;margin:0;">${subtitle}</p>
+            </div>
+        `;
+    }
+
+    function skeletonCards(n = 5) {
+        return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem;">
+            ${Array(n).fill(`<div class="stat-card"><div class="skeleton" style="height:0.75rem;width:60%;margin-bottom:0.75rem;"></div><div class="skeleton" style="height:2rem;width:40%;"></div></div>`).join('')}
+        </div>`;
+    }
+
+    function skeletonTable(cols, rows = 5) {
+        return `<div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;overflow:hidden;">
+            <table class="data-table"><thead><tr>${Array(cols).fill('<th></th>').join('')}</tr></thead>
+            <tbody>${Array(rows).fill(`<tr>${Array(cols).fill(`<td><div class="skeleton" style="height:0.875rem;width:80%;"></div></td>`).join('')}</tr>`).join('')}</tbody>
+            </table></div>`;
+    }
+
+    // ─── Dashboard ────────────────────────────────────────────────────────────
+    function renderDashboard() {
+        setHeader('Dashboard', 'Platform overview and key metrics');
+        const body = document.getElementById('page-body');
+        const s = state.stats;
+        if (!s) { body.innerHTML = skeletonCards(6); return; }
+        const cards = [
+            { label: 'Total Users',     value: s.totalUsers,      icon: '👤', col: '#818cf8' },
+            { label: 'Pro Users',       value: s.proUsers,        icon: '⭐', col: '#fbbf24' },
+            { label: 'Workspaces',      value: s.totalWorkspaces, icon: '🏠', col: '#34d399' },
+            { label: 'Products',        value: s.totalProducts,   icon: '📦', col: '#fb923c' },
+            { label: 'Total Licenses',  value: s.totalLicenses,   icon: '🔑', col: '#a78bfa' },
+            { label: 'Active Licenses', value: s.activeLicenses,  icon: '✅', col: '#34d399' },
+        ];
+        body.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem;">
+                ${cards.map(c => `
+                    <div class="stat-card">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+                            <span style="font-size:0.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">${c.label}</span>
+                            <span style="font-size:1rem;">${c.icon}</span>
+                        </div>
+                        <p style="font-size:2rem;font-weight:800;color:#fff;margin:0;line-height:1;">${fmtNum(c.value)}</p>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    // ─── Users ────────────────────────────────────────────────────────────────
+    function renderUsers() {
+        setHeader('Users', 'Search, view, edit, and moderate user accounts');
+        document.getElementById('page-body').innerHTML = `
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
+                <div class="search-wrap" style="flex:1;max-width:22rem;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="searchInput" data-tab="users" placeholder="Search by username or email…" value="${esc(state.users.searchTerm)}" class="form-input">
+                </div>
+            </div>
+            <div id="table-container"></div>
+            <div id="pagination-container" style="margin-top:1rem;display:flex;justify-content:space-between;align-items:center;"></div>
+        `;
+        renderUsersTable();
+    }
+
+    function renderUsersTable() {
+        const c = document.getElementById('table-container');
+        if (!c) return;
+        const { data } = state.users;
+        if (!data.length) {
+            c.innerHTML = `<div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;padding:2rem;text-align:center;color:#6b7280;font-size:0.875rem;">No users found.</div>`;
+            renderPagination('users');
+            return;
+        }
+        c.innerHTML = `
+            <div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;overflow:hidden;">
+                <div style="overflow-x:auto;">
+                    <table class="data-table">
+                        <thead><tr>
+                            <th>User</th><th>Plan</th><th>TacoCoins</th><th>Workspaces</th><th>Status</th><th>Suspend Reason</th><th style="text-align:right;">Actions</th>
+                        </tr></thead>
+                        <tbody>
+                            ${data.map(u => `
+                                <tr>
+                                    <td>
+                                        <div style="display:flex;align-items:center;gap:0.625rem;">
+                                            <img src="${esc(u.avatar) || 'https://cdn.discordapp.com/embed/avatars/0.png'}" style="width:2rem;height:2rem;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                                            <div>
+                                                <div style="font-weight:600;color:#e5e7eb;">${esc(u.username)}</div>
+                                                <div style="display:flex;gap:0.25rem;margin-top:0.15rem;flex-wrap:wrap;">
+                                                    ${u.isMasterAdmin ? '<span class="badge admin" style="font-size:0.625rem;">Master Admin</span>' : ''}
+                                                    ${u.isStaff ? '<span class="badge staff" style="font-size:0.625rem;">Staff</span>' : ''}
+                                                    ${u.discordId ? `<span style="font-size:0.625rem;background:rgba(88,101,242,0.15);color:#7289da;border:1px solid rgba(88,101,242,0.3);border-radius:0.375rem;padding:0.1rem 0.4rem;">Discord</span>` : ''}
+                                                    ${u.robloxId  ? `<span style="font-size:0.625rem;background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.25);border-radius:0.375rem;padding:0.1rem 0.4rem;">Roblox</span>` : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge ${u.plan === 'pro' ? 'pro' : 'free'}">${u.plan}</span></td>
+                                    <td style="color:#fbbf24;font-weight:600;">${fmtNum(u.tacoCoins)}</td>
+                                    <td style="color:#9ca3af;">${u._count?.ownedWorkspaces ?? 0}</td>
+                                    <td><span class="badge ${u.isSuspended ? 'suspended' : 'active'}">${u.isSuspended ? 'Suspended' : 'Active'}</span></td>
+                                    <td>${u.isSuspended && u.suspendReason ? `<span class="reason-pill" title="${esc(u.suspendReason)}">${esc(u.suspendReason)}</span>` : '<span style="color:#374151;">—</span>'}</td>
+                                    <td style="text-align:right;">
+                                        <div style="display:inline-flex;gap:0.375rem;flex-wrap:wrap;justify-content:flex-end;">
+                                            <button data-id="${u.id}" class="btn btn-ghost btn-sm view-user-btn">View</button>
+                                            <button data-id="${u.id}" class="btn btn-ghost btn-sm edit-user-btn">Edit</button>
+                                            <button data-id="${u.id}" class="btn btn-warning btn-sm coins-btn" title="Adjust TacoCoins">Coins</button>
+                                            ${(!u.isMasterAdmin && !u.isStaff) ? (
+                                                u.isSuspended
+                                                ? `<button data-id="${u.id}" data-type="users" data-suspended="false" class="btn btn-success btn-sm suspend-btn">Unsuspend</button>`
+                                                : `<button data-id="${u.id}" data-type="users" data-suspended="true" data-name="${esc(u.username)}" class="btn btn-danger btn-sm suspend-btn">Suspend</button>`
+                                            ) : ''}
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        renderPagination('users');
+    }
+
+    // ─── Workspaces ───────────────────────────────────────────────────────────
+    function renderWorkspaces() {
+        setHeader('Workspaces', 'View and moderate all user workspaces');
+        document.getElementById('page-body').innerHTML = `
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+                <div class="search-wrap" style="flex:1;max-width:22rem;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="searchInput" data-tab="workspaces" placeholder="Search by name…" value="${esc(state.workspaces.searchTerm)}" class="form-input">
+                </div>
+            </div>
+            <div id="table-container"></div>
+            <div id="pagination-container" style="margin-top:1rem;display:flex;justify-content:space-between;align-items:center;"></div>
+        `;
+        renderWorkspacesTable();
+    }
+
+    function renderWorkspacesTable() {
+        const c = document.getElementById('table-container');
+        if (!c) return;
+        const { data } = state.workspaces;
+        if (!data.length) {
+            c.innerHTML = `<div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;padding:2rem;text-align:center;color:#6b7280;font-size:0.875rem;">No workspaces found.</div>`;
+            renderPagination('workspaces');
+            return;
+        }
+        c.innerHTML = `
+            <div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;overflow:hidden;">
+                <div style="overflow-x:auto;">
+                    <table class="data-table">
+                        <thead><tr>
+                            <th>Workspace</th><th>Owner</th><th>Products</th><th>Members</th><th>Status</th><th>Suspend Reason</th><th style="text-align:right;">Actions</th>
+                        </tr></thead>
+                        <tbody>
+                            ${data.map(ws => `
+                                <tr>
+                                    <td>
+                                        <div style="display:flex;align-items:center;gap:0.625rem;">
+                                            ${ws.logoUrl ? `<img src="${esc(ws.logoUrl)}" style="width:2rem;height:2rem;border-radius:0.5rem;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'">` : `<div style="width:2rem;height:2rem;border-radius:0.5rem;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);flex-shrink:0;"></div>`}
+                                            <span style="font-weight:600;color:#e5e7eb;">${esc(ws.name)}</span>
+                                        </div>
+                                    </td>
+                                    <td style="color:#9ca3af;">${esc(ws.owner?.username || '—')}</td>
+                                    <td style="color:#9ca3af;">${ws._count?.products ?? 0}</td>
+                                    <td style="color:#9ca3af;">${ws._count?.members ?? 0}</td>
+                                    <td><span class="badge ${ws.isSuspended ? 'suspended' : 'active'}">${ws.isSuspended ? 'Suspended' : 'Active'}</span></td>
+                                    <td>${ws.isSuspended && ws.suspendReason ? `<span class="reason-pill" title="${esc(ws.suspendReason)}">${esc(ws.suspendReason)}</span>` : '<span style="color:#374151;">—</span>'}</td>
+                                    <td style="text-align:right;">
+                                        ${ws.isSuspended
+                                            ? `<button data-id="${ws.id}" data-type="workspaces" data-suspended="false" class="btn btn-success btn-sm suspend-btn">Unsuspend</button>`
+                                            : `<button data-id="${ws.id}" data-type="workspaces" data-suspended="true" data-name="${esc(ws.name)}" class="btn btn-warning btn-sm suspend-btn">Suspend</button>`
+                                        }
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        renderPagination('workspaces');
+    }
+
+    // ─── Products ─────────────────────────────────────────────────────────────
+    function renderProducts() {
+        setHeader('Products', 'View and moderate all products');
+        document.getElementById('page-body').innerHTML = `
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+                <div class="search-wrap" style="flex:1;max-width:22rem;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="searchInput" data-tab="products" placeholder="Search by name…" value="${esc(state.products.searchTerm)}" class="form-input">
+                </div>
+            </div>
+            <div id="table-container"></div>
+            <div id="pagination-container" style="margin-top:1rem;display:flex;justify-content:space-between;align-items:center;"></div>
+        `;
+        renderProductsTable();
+    }
+
+    function renderProductsTable() {
+        const c = document.getElementById('table-container');
+        if (!c) return;
+        const { data } = state.products;
+        if (!data.length) {
+            c.innerHTML = `<div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;padding:2rem;text-align:center;color:#6b7280;font-size:0.875rem;">No products found.</div>`;
+            renderPagination('products');
+            return;
+        }
+        c.innerHTML = `
+            <div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;overflow:hidden;">
+                <div style="overflow-x:auto;">
+                    <table class="data-table">
+                        <thead><tr>
+                            <th>Product</th><th>Workspace</th><th>Owner</th><th>Licenses</th><th>Status</th><th>Suspend Reason</th><th style="text-align:right;">Actions</th>
+                        </tr></thead>
+                        <tbody>
+                            ${data.map(p => `
+                                <tr>
+                                    <td style="font-weight:600;color:#e5e7eb;">${esc(p.name)}</td>
+                                    <td style="color:#9ca3af;">${esc(p.workspace?.name || '—')}</td>
+                                    <td style="color:#9ca3af;">${esc(p.createdBy?.username || '—')}</td>
+                                    <td style="color:#9ca3af;">${p._count?.licenses ?? 0}</td>
+                                    <td><span class="badge ${p.isSuspended ? 'suspended' : 'active'}">${p.isSuspended ? 'Suspended' : 'Active'}</span></td>
+                                    <td>${p.isSuspended && p.suspendReason ? `<span class="reason-pill" title="${esc(p.suspendReason)}">${esc(p.suspendReason)}</span>` : '<span style="color:#374151;">—</span>'}</td>
+                                    <td style="text-align:right;">
+                                        ${p.isSuspended
+                                            ? `<button data-id="${p.id}" data-type="products" data-suspended="false" class="btn btn-success btn-sm suspend-btn">Unsuspend</button>`
+                                            : `<button data-id="${p.id}" data-type="products" data-suspended="true" data-name="${esc(p.name)}" class="btn btn-warning btn-sm suspend-btn">Suspend</button>`
+                                        }
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        renderPagination('products');
+    }
+
+    // ─── Licenses ─────────────────────────────────────────────────────────────
+    function renderLicenses() {
+        setHeader('Licenses', 'Search and view all licenses platform-wide');
+        document.getElementById('page-body').innerHTML = `
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+                <div class="search-wrap" style="flex:1;max-width:22rem;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="searchInput" data-tab="licenses" placeholder="Search by username or Roblox ID…" value="${esc(state.licenses.searchTerm)}" class="form-input">
+                </div>
+            </div>
+            <div id="table-container"></div>
+            <div id="pagination-container" style="margin-top:1rem;display:flex;justify-content:space-between;align-items:center;"></div>
+        `;
+        renderLicensesTable();
+    }
+
+    function renderLicensesTable() {
+        const c = document.getElementById('table-container');
+        if (!c) return;
+        const { data } = state.licenses;
+        if (!data.length) {
+            c.innerHTML = `<div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;padding:2rem;text-align:center;color:#6b7280;font-size:0.875rem;">No licenses found.</div>`;
+            renderPagination('licenses');
+            return;
+        }
+        const now = Date.now();
+        c.innerHTML = `
+            <div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;overflow:hidden;">
+                <div style="overflow-x:auto;">
+                    <table class="data-table">
+                        <thead><tr>
+                            <th>User</th><th>Roblox ID</th><th>Product</th><th>Workspace</th><th>Status</th><th>Expires</th>
+                        </tr></thead>
+                        <tbody>
+                            ${data.map(l => {
+                                const expired = l.expiresAt && new Date(l.expiresAt).getTime() < now;
+                                const bc = !l.isActive ? 'revoked' : expired ? 'expired' : 'active';
+                                const bl = !l.isActive ? 'Revoked' : expired ? 'Expired' : 'Active';
+                                return `
+                                    <tr>
+                                        <td>
+                                            <div style="display:flex;align-items:center;gap:0.5rem;">
+                                                ${l.assignedToUser?.avatar ? `<img src="${esc(l.assignedToUser.avatar)}" style="width:1.75rem;height:1.75rem;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'">` : ''}
+                                                <span style="color:#e5e7eb;">${esc(l.assignedToUser?.username || '—')}</span>
+                                            </div>
+                                        </td>
+                                        <td style="font-family:monospace;color:#9ca3af;">${esc(l.assignedToRobloxId || '—')}</td>
+                                        <td style="color:#e5e7eb;">${esc(l.product?.name || '—')}</td>
+                                        <td style="color:#9ca3af;">${esc(l.product?.workspace?.name || '—')}</td>
+                                        <td><span class="badge ${bc}">${bl}</span></td>
+                                        <td style="color:#6b7280;">${l.expiresAt ? fmtDate(l.expiresAt) : 'Never'}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        renderPagination('licenses');
+    }
+
+    // ─── Pagination ───────────────────────────────────────────────────────────
+    function renderPagination(tab) {
+        const s = state[tab];
+        const c = document.getElementById('pagination-container');
+        if (!c || !s) return;
+        c.innerHTML = `
+            <button data-page="${s.currentPage - 1}" data-tab="${tab}" class="btn btn-ghost pagination-btn ${s.currentPage === 1 ? 'opacity-50' : ''}" ${s.currentPage === 1 ? 'disabled' : ''}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                Previous
+            </button>
+            <span style="font-size:0.8125rem;color:#6b7280;">Page ${s.currentPage} of ${s.totalPages || 1}</span>
+            <button data-page="${s.currentPage + 1}" data-tab="${tab}" class="btn btn-ghost pagination-btn ${s.currentPage >= s.totalPages ? 'opacity-50' : ''}" ${s.currentPage >= s.totalPages ? 'disabled' : ''}>
+                Next
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+        `;
+    }
+
+    // ─── Modals ───────────────────────────────────────────────────────────────
+    function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+
+    function showModal(html, onMount) {
+        const root = document.getElementById('modal-root');
+        root.innerHTML = `<div class="modal-overlay" id="modal-overlay">${html}</div>`;
+        document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+        if (onMount) onMount();
+    }
+
+    function showSuspendModal(id, type, name) {
+        showModal(`
+            <div class="modal-box">
+                <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+                    <div style="width:2.25rem;height:2.25rem;border-radius:0.625rem;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    </div>
+                    <div>
+                        <h2 style="font-size:1rem;font-weight:700;color:#fff;margin:0;">Suspend</h2>
+                        <p style="font-size:0.8125rem;color:#6b7280;margin:0;">${esc(name)}</p>
+                    </div>
+                </div>
+                <div style="margin-bottom:1.25rem;">
+                    <label class="form-label">Reason <span style="color:#4b5563;font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label>
+                    <textarea id="suspend-reason" rows="3" placeholder="e.g. Violation of terms of service…" class="form-input"></textarea>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:0.5rem;">
+                    <button id="cancelSuspendBtn" class="btn btn-ghost">Cancel</button>
+                    <button id="confirmSuspendBtn" class="btn btn-warning">Suspend</button>
+                </div>
+            </div>
+        `, () => {
+            document.getElementById('cancelSuspendBtn').onclick = closeModal;
+            document.getElementById('confirmSuspendBtn').onclick = async () => {
+                const reason = document.getElementById('suspend-reason').value.trim();
+                const btn = document.getElementById('confirmSuspendBtn');
+                btn.disabled = true; btn.textContent = 'Suspending…';
+                const result = await api(`/api/v1/staff/${type}/${id}/suspend`, 'PATCH', { suspended: true, reason: reason || undefined });
+                if (result) {
+                    toast(`Suspended.`, 'success');
+                    closeModal();
+                    refreshTab(type);
+                } else { btn.disabled = false; btn.textContent = 'Suspend'; }
+            };
+        });
+    }
+
+    function showUnsuspendModal(id, type, name) {
+        showModal(`
+            <div class="modal-box">
+                <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+                    <div style="width:2.25rem;height:2.25rem;border-radius:0.625rem;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>
+                    </div>
+                    <div>
+                        <h2 style="font-size:1rem;font-weight:700;color:#fff;margin:0;">Unsuspend</h2>
+                        <p style="font-size:0.8125rem;color:#6b7280;margin:0;">${esc(name)}</p>
+                    </div>
+                </div>
+                <p style="font-size:0.875rem;color:#9ca3af;margin-bottom:1.25rem;">This will restore access. An inbox notification will be sent.</p>
+                <div style="display:flex;justify-content:flex-end;gap:0.5rem;">
+                    <button id="cancelUnsuspendBtn" class="btn btn-ghost">Cancel</button>
+                    <button id="confirmUnsuspendBtn" class="btn btn-success">Unsuspend</button>
+                </div>
+            </div>
+        `, () => {
+            document.getElementById('cancelUnsuspendBtn').onclick = closeModal;
+            document.getElementById('confirmUnsuspendBtn').onclick = async () => {
+                const btn = document.getElementById('confirmUnsuspendBtn');
+                btn.disabled = true; btn.textContent = 'Unsuspending…';
+                const result = await api(`/api/v1/staff/${type}/${id}/suspend`, 'PATCH', { suspended: false });
+                if (result) {
+                    toast(`Unsuspended.`, 'success');
+                    closeModal();
+                    refreshTab(type);
+                } else { btn.disabled = false; btn.textContent = 'Unsuspend'; }
+            };
+        });
+    }
+
+    function showEditUserModal(id) {
+        const u = state.users.data.find(d => d.id === id);
+        if (!u) return;
+        showModal(`
+            <div class="modal-box">
+                <h2 style="font-size:1rem;font-weight:700;color:#fff;margin:0 0 1.25rem;">Edit User — ${esc(u.username)}</h2>
+                <div style="display:flex;flex-direction:column;gap:0.875rem;">
+                    <div>
+                        <label class="form-label">Email</label>
+                        <input type="email" id="edit-email" value="${esc(u.email || '')}" class="form-input">
+                    </div>
+                    <div>
+                        <label class="form-label">Plan</label>
+                        <select id="edit-plan" class="form-input">
+                            <option value="free" ${u.plan === 'free' ? 'selected' : ''}>Free</option>
+                            <option value="pro"  ${u.plan === 'pro'  ? 'selected' : ''}>Pro</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.5rem;">
+                    <button id="cancelEditBtn" class="btn btn-ghost">Cancel</button>
+                    <button id="confirmEditBtn" class="btn btn-primary">Save Changes</button>
+                </div>
+            </div>
+        `, () => {
+            document.getElementById('cancelEditBtn').onclick = closeModal;
+            document.getElementById('confirmEditBtn').onclick = async () => {
+                const btn = document.getElementById('confirmEditBtn');
+                btn.disabled = true; btn.textContent = 'Saving…';
+                const result = await api(`/api/v1/staff/users/${id}`, 'PATCH', {
+                    email: document.getElementById('edit-email').value,
+                    plan:  document.getElementById('edit-plan').value,
+                });
+                if (result) {
+                    toast('User updated.', 'success');
+                    closeModal();
+                    fetchUsers();
+                } else { btn.disabled = false; btn.textContent = 'Save Changes'; }
+            };
+        });
+    }
+
+    function showCoinsModal(id) {
+        const u = state.users.data.find(d => d.id === id);
+        if (!u) return;
+        showModal(`
+            <div class="modal-box">
+                <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem;">
+                    <div style="width:2.25rem;height:2.25rem;border-radius:0.625rem;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">🪙</div>
+                    <div>
+                        <h2 style="font-size:1rem;font-weight:700;color:#fff;margin:0;">Adjust TacoCoins</h2>
+                        <p style="font-size:0.8125rem;color:#6b7280;margin:0;">${esc(u.username)} — current balance: <strong style="color:#fbbf24;">${fmtNum(u.tacoCoins)}</strong></p>
+                    </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:0.875rem;">
+                    <div>
+                        <label class="form-label">Amount <span style="color:#4b5563;font-weight:400;text-transform:none;">(use negative to deduct)</span></label>
+                        <input type="number" id="coins-amount" placeholder="e.g. 100 or -50" class="form-input">
+                    </div>
+                    <div>
+                        <label class="form-label">Reason</label>
+                        <input type="text" id="coins-reason" placeholder="e.g. Compensation for downtime" class="form-input">
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.5rem;">
+                    <button id="cancelCoinsBtn" class="btn btn-ghost">Cancel</button>
+                    <button id="confirmCoinsBtn" class="btn btn-primary">Apply Adjustment</button>
+                </div>
+            </div>
+        `, () => {
+            document.getElementById('cancelCoinsBtn').onclick = closeModal;
+            document.getElementById('coins-amount').focus();
+            document.getElementById('confirmCoinsBtn').onclick = async () => {
+                const amount = parseInt(document.getElementById('coins-amount').value);
+                const reason = document.getElementById('coins-reason').value.trim();
+                if (isNaN(amount) || amount === 0) { toast('Enter a non-zero integer amount.', 'error'); return; }
+                if (!reason) { toast('Reason is required.', 'error'); return; }
+                const btn = document.getElementById('confirmCoinsBtn');
+                btn.disabled = true; btn.textContent = 'Applying…';
+                const result = await api(`/api/v1/staff/users/${id}/coins`, 'PATCH', { amount, reason });
+                if (result) {
+                    toast(`Coins adjusted. New balance: ${fmtNum(result.tacoCoins)}`, 'success');
+                    closeModal();
+                    fetchUsers();
+                } else { btn.disabled = false; btn.textContent = 'Apply Adjustment'; }
+            };
+        });
+    }
+
+    function showViewUserModal(id) {
+        showModal(`
+            <div class="modal-box wide">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
+                    <h2 style="font-size:1rem;font-weight:700;color:#fff;margin:0;">User Details</h2>
+                    <button id="closeViewBtn" class="btn btn-ghost btn-sm">Close</button>
+                </div>
+                <div id="view-user-content" style="min-height:6rem;">
+                    <div class="skeleton" style="height:1rem;width:60%;margin-bottom:0.75rem;"></div>
+                    <div class="skeleton" style="height:1rem;width:40%;margin-bottom:0.75rem;"></div>
+                    <div class="skeleton" style="height:1rem;width:70%;"></div>
+                </div>
+            </div>
+        `, async () => {
+            document.getElementById('closeViewBtn').onclick = closeModal;
+            const data = await api(`/api/v1/staff/users/${id}`);
+            const vc = document.getElementById('view-user-content');
+            if (!vc) return;
+            if (!data?.user) { vc.innerHTML = '<p style="color:#f87171;">Failed to load user.</p>'; return; }
+            const u = data.user;
+            vc.innerHTML = `
+                <div style="display:flex;align-items:center;gap:0.875rem;margin-bottom:1.25rem;">
+                    <img src="${esc(u.avatar) || 'https://cdn.discordapp.com/embed/avatars/0.png'}" style="width:3rem;height:3rem;border-radius:50%;object-fit:cover;" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                    <div>
+                        <div style="font-size:1rem;font-weight:700;color:#fff;">${esc(u.username)}</div>
+                        <div style="font-size:0.8125rem;color:#6b7280;">${esc(u.email || 'No email')}</div>
+                        <div style="display:flex;gap:0.25rem;margin-top:0.25rem;flex-wrap:wrap;">
+                            ${u.isMasterAdmin ? '<span class="badge admin">Master Admin</span>' : ''}
+                            ${u.isStaff ? '<span class="badge staff">Staff</span>' : ''}
+                            <span class="badge ${u.plan === 'pro' ? 'pro' : 'free'}">${u.plan}</span>
+                            <span class="badge ${u.isSuspended ? 'suspended' : 'active'}">${u.isSuspended ? 'Suspended' : 'Active'}</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.8125rem;margin-bottom:1.25rem;">
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">TacoCoins</div>
+                        <div style="font-weight:700;color:#fbbf24;font-size:1rem;">${fmtNum(u.tacoCoins)}</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">Workspaces</div>
+                        <div style="font-weight:700;color:#e5e7eb;font-size:1rem;">${u._count?.ownedWorkspaces ?? 0}</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">Discord ID</div>
+                        <div style="font-family:monospace;color:#7289da;font-size:0.75rem;word-break:break-all;">${esc(u.discordId || '—')}</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">Roblox ID</div>
+                        <div style="font-family:monospace;color:#f87171;font-size:0.75rem;word-break:break-all;">${esc(u.robloxId || '—')}</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">Bonus Workspaces</div>
+                        <div style="font-weight:600;color:#e5e7eb;">${u.bonusWorkspaces}</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">Joined</div>
+                        <div style="color:#e5e7eb;">${fmtDate(u.createdAt)}</div>
+                    </div>
+                </div>
+                ${u.coinTransactions?.length ? `
+                    <div style="font-size:0.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:0.5rem;">Recent Coin Transactions</div>
+                    <div style="display:flex;flex-direction:column;gap:0.25rem;max-height:10rem;overflow-y:auto;">
+                        ${u.coinTransactions.map(t => `
+                            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.8125rem;padding:0.375rem 0.625rem;background:rgba(255,255,255,0.02);border-radius:0.375rem;">
+                                <span style="color:#9ca3af;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.reason)}</span>
+                                <span style="font-weight:600;margin-left:0.5rem;flex-shrink:0;color:${t.amount >= 0 ? '#34d399' : '#f87171'}">${t.amount >= 0 ? '+' : ''}${t.amount}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            `;
+        });
+    }
+
+    // ─── Data fetching ────────────────────────────────────────────────────────
+    async function fetchStats() {
+        if (!apiKey) return;
+        const data = await api('/api/v1/staff/stats');
+        if (data) { state.stats = data; if (state.activeTab === 'dashboard') renderDashboard(); }
+    }
+
+    async function fetchUsers() {
+        if (!apiKey) return;
+        const { currentPage, searchTerm } = state.users;
+        const data = await api(`/api/v1/staff/users?page=${currentPage}&limit=${PAGE_LIMIT}&search=${encodeURIComponent(searchTerm)}`);
+        if (data) {
+            state.users.data = data.users || [];
+            state.users.totalPages = Math.ceil((data.total || 0) / PAGE_LIMIT) || 1;
+        }
+        if (state.activeTab === 'users') renderUsersTable();
+    }
+
+    async function fetchWorkspaces() {
+        if (!apiKey) return;
+        const { currentPage, searchTerm } = state.workspaces;
+        const data = await api(`/api/v1/staff/workspaces?page=${currentPage}&limit=${PAGE_LIMIT}&search=${encodeURIComponent(searchTerm)}`);
+        if (data) {
+            state.workspaces.data = data.workspaces || [];
+            state.workspaces.totalPages = Math.ceil((data.total || 0) / PAGE_LIMIT) || 1;
+        }
+        if (state.activeTab === 'workspaces') renderWorkspacesTable();
+    }
+
+    async function fetchProducts() {
+        if (!apiKey) return;
+        const { currentPage, searchTerm } = state.products;
+        const data = await api(`/api/v1/staff/products?page=${currentPage}&limit=${PAGE_LIMIT}&search=${encodeURIComponent(searchTerm)}`);
+        if (data) {
+            state.products.data = data.products || [];
+            state.products.totalPages = Math.ceil((data.total || 0) / PAGE_LIMIT) || 1;
+        }
+        if (state.activeTab === 'products') renderProductsTable();
+    }
+
+    async function fetchLicenses() {
+        if (!apiKey) return;
+        const { currentPage, searchTerm } = state.licenses;
+        const data = await api(`/api/v1/staff/licenses?page=${currentPage}&limit=${PAGE_LIMIT}&search=${encodeURIComponent(searchTerm)}`);
+        if (data) {
+            state.licenses.data = data.licenses || [];
+            state.licenses.totalPages = Math.ceil((data.total || 0) / PAGE_LIMIT) || 1;
+        }
+        if (state.activeTab === 'licenses') renderLicensesTable();
+    }
+
+    function fetchDataForTab() {
+        switch (state.activeTab) {
+            case 'dashboard':  fetchStats();      break;
+            case 'users':      fetchUsers();      break;
+            case 'workspaces': fetchWorkspaces(); break;
+            case 'products':   fetchProducts();   break;
+            case 'licenses':   fetchLicenses();   break;
+        }
+    }
+
+    function refreshTab(type) {
+        if (type === 'workspaces') fetchWorkspaces();
+        else if (type === 'products') fetchProducts();
+        else if (type === 'users') fetchUsers();
+    }
+
+    // ─── Event listeners ─────────────────────────────────────────────────────
+    document.getElementById('loginBtn').addEventListener('click', () => {
+        window.location.href = `${API_BASE_URL}/api/v1/auth/discord?returnTo=${encodeURIComponent(STAFF_PORTAL_URL)}`;
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+
+    document.getElementById('sidebar-nav').addEventListener('click', e => {
+        const btn = e.target.closest('[data-tab]');
+        if (btn) { state.activeTab = btn.dataset.tab; render(); fetchDataForTab(); }
+    });
+
+    const debouncedSearch = debounce((tab) => {
+        if (tab === 'users') fetchUsers();
+        else if (tab === 'workspaces') fetchWorkspaces();
+        else if (tab === 'products') fetchProducts();
+        else if (tab === 'licenses') fetchLicenses();
+    }, 300);
+
+    document.getElementById('page-body').addEventListener('input', e => {
+        if (e.target.id === 'searchInput') {
+            const tab = e.target.dataset.tab;
+            if (state[tab]) { state[tab].searchTerm = e.target.value; state[tab].currentPage = 1; }
+            debouncedSearch(tab);
+        }
+    });
+
+    document.getElementById('page-body').addEventListener('click', async e => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+
+        if (btn.classList.contains('pagination-btn')) {
+            const tab = btn.dataset.tab;
+            const newPage = parseInt(btn.dataset.page);
+            if (state[tab] && !isNaN(newPage) && newPage >= 1 && newPage <= state[tab].totalPages) {
+                state[tab].currentPage = newPage;
+                refreshTab(tab);
+            }
+        } else if (btn.classList.contains('view-user-btn')) {
+            showViewUserModal(btn.dataset.id);
+        } else if (btn.classList.contains('edit-user-btn')) {
+            showEditUserModal(btn.dataset.id);
+        } else if (btn.classList.contains('coins-btn')) {
+            showCoinsModal(btn.dataset.id);
+        } else if (btn.classList.contains('suspend-btn')) {
+            const { id, type } = btn.dataset;
+            const suspending = btn.dataset.suspended === 'true';
+            const name = btn.dataset.name || id;
+            if (suspending) {
+                showSuspendModal(id, type, name);
+            } else {
+                const item = (state[type]?.data || []).find(d => d.id === id);
+                const displayName = item?.name || item?.username || name;
+                showUnsuspendModal(id, type, displayName);
+            }
+        }
+    });
+
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+    // Spin animation
+    const styleEl = document.createElement('style');
+    styleEl.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+    document.head.appendChild(styleEl);
+
+    // ─── Boot ─────────────────────────────────────────────────────────────────
+    async function verifyAndLoad() {
+        const data = await api('/api/v1/auth/me');
+        if (!data) return;
+        if (!data.isStaff && !data.isMasterAdmin) {
+            logout();
+            const errEl = document.getElementById('auth-error');
+            errEl.textContent = 'Access denied: your account does not have staff privileges.';
+            errEl.style.display = 'block';
+            return;
+        }
+        currentUser = data;
+        render();
+        fetchDataForTab();
+    }
+
+    if (apiKey) {
+        verifyAndLoad();
+    } else {
+        render();
+    }
+</script>
+</body>
+</html>
