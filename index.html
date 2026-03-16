@@ -135,7 +135,8 @@
             border-radius: 1.25rem; box-shadow: 0 24px 64px rgba(0,0,0,0.6);
             width: 100%; max-width: 28rem; padding: 1.5rem;
         }
-        .modal-box.wide { max-width: 36rem; }
+        .modal-box.wide  { max-width: 36rem; }
+        .modal-box.xwide { max-width: 48rem; max-height: 85vh; overflow-y: auto; }
 
         .search-wrap { position: relative; }
         .search-wrap svg { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #4b5563; pointer-events: none; }
@@ -149,6 +150,15 @@
             border: 1px solid rgba(239,68,68,0.15); border-radius: 0.375rem;
             font-size: 0.6875rem; color: #fca5a5;
             max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        .activity-item {
+            display: flex; align-items: flex-start; gap: 0.75rem;
+            padding: 0.625rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-dot {
+            width: 0.5rem; height: 0.5rem; border-radius: 50%; flex-shrink: 0; margin-top: 0.375rem;
         }
     </style>
 </head>
@@ -280,17 +290,28 @@
     }
     function debounce(fn, delay) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), delay); }; }
     function fmtDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }); }
+    function fmtTime(d) { if (!d) return '—'; return new Date(d).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); }
     function fmtNum(n) { if (n == null) return '0'; return Number(n).toLocaleString(); }
+    function timeAgo(d) {
+        if (!d) return '—';
+        const s = Math.floor((Date.now() - new Date(d)) / 1000);
+        if (s < 60) return `${s}s ago`;
+        if (s < 3600) return `${Math.floor(s/60)}m ago`;
+        if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+        return `${Math.floor(s/86400)}d ago`;
+    }
 
     // ─── State ────────────────────────────────────────────────────────────────
     const PAGE_LIMIT = 50;
     const state = {
         activeTab: 'dashboard',
         stats: null,
+        activity: null,
         users:      { data: [], currentPage: 1, totalPages: 1, searchTerm: '' },
         workspaces: { data: [], currentPage: 1, totalPages: 1, searchTerm: '' },
         products:   { data: [], currentPage: 1, totalPages: 1, searchTerm: '' },
         licenses:   { data: [], currentPage: 1, totalPages: 1, searchTerm: '' },
+        shop:       { data: [] },
     };
 
     // ─── Nav ─────────────────────────────────────────────────────────────────
@@ -300,6 +321,7 @@
         { id: 'workspaces', label: 'Workspaces', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>' },
         { id: 'products',   label: 'Products',   icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>' },
         { id: 'licenses',   label: 'Licenses',   icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' },
+        { id: 'shop',       label: 'Coin Shop',  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>' },
     ];
 
     // ─── Shell ────────────────────────────────────────────────────────────────
@@ -339,6 +361,7 @@
             case 'workspaces':  renderWorkspaces();   break;
             case 'products':    renderProducts();     break;
             case 'licenses':    renderLicenses();     break;
+            case 'shop':        renderShop();         break;
         }
     }
 
@@ -366,20 +389,21 @@
 
     // ─── Dashboard ────────────────────────────────────────────────────────────
     function renderDashboard() {
-        setHeader('Dashboard', 'Platform overview and key metrics');
+        setHeader('Dashboard', 'Platform overview, key metrics, and recent activity');
         const body = document.getElementById('page-body');
         const s = state.stats;
-        if (!s) { body.innerHTML = skeletonCards(6); return; }
-        const cards = [
-            { label: 'Total Users',     value: s.totalUsers,      icon: '👤', col: '#818cf8' },
-            { label: 'Pro Users',       value: s.proUsers,        icon: '⭐', col: '#fbbf24' },
-            { label: 'Workspaces',      value: s.totalWorkspaces, icon: '🏠', col: '#34d399' },
-            { label: 'Products',        value: s.totalProducts,   icon: '📦', col: '#fb923c' },
-            { label: 'Total Licenses',  value: s.totalLicenses,   icon: '🔑', col: '#a78bfa' },
-            { label: 'Active Licenses', value: s.activeLicenses,  icon: '✅', col: '#34d399' },
-        ];
-        body.innerHTML = `
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem;">
+        const a = state.activity;
+
+        const statsHtml = s ? (() => {
+            const cards = [
+                { label: 'Total Users',     value: s.totalUsers,      icon: '👤', col: '#818cf8' },
+                { label: 'Pro Users',       value: s.proUsers,        icon: '⭐', col: '#fbbf24' },
+                { label: 'Workspaces',      value: s.totalWorkspaces, icon: '🏠', col: '#34d399' },
+                { label: 'Products',        value: s.totalProducts,   icon: '📦', col: '#fb923c' },
+                { label: 'Total Licenses',  value: s.totalLicenses,   icon: '🔑', col: '#a78bfa' },
+                { label: 'Active Licenses', value: s.activeLicenses,  icon: '✅', col: '#34d399' },
+            ];
+            return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem;margin-bottom:1.5rem;">
                 ${cards.map(c => `
                     <div class="stat-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
@@ -389,18 +413,63 @@
                         <p style="font-size:2rem;font-weight:800;color:#fff;margin:0;line-height:1;">${fmtNum(c.value)}</p>
                     </div>
                 `).join('')}
+            </div>`;
+        })() : skeletonCards(6) + '<div style="margin-bottom:1.5rem;"></div>';
+
+        const activityHtml = a ? (() => {
+            if (!a.events?.length) return `<p style="color:#6b7280;font-size:0.875rem;text-align:center;padding:2rem;">No recent activity.</p>`;
+            const typeConfig = {
+                new_user:      { color: '#818cf8', label: 'New user',      dot: '#6366f1' },
+                new_workspace: { color: '#34d399', label: 'New workspace',  dot: '#10b981' },
+                new_product:   { color: '#fb923c', label: 'New product',    dot: '#f97316' },
+                new_license:   { color: '#a78bfa', label: 'New license',    dot: '#8b5cf6' },
+                staff_action:  { color: '#fbbf24', label: 'Staff action',   dot: '#f59e0b' },
+            };
+            return a.events.map(ev => {
+                const cfg = typeConfig[ev.type] || { color: '#6b7280', label: ev.type, dot: '#374151' };
+                let desc = '';
+                if (ev.type === 'new_user')      desc = `<strong style="color:#e5e7eb;">${esc(ev.data.username)}</strong> joined (<span class="badge ${ev.data.plan === 'pro' ? 'pro' : 'free'}" style="font-size:0.625rem;">${ev.data.plan}</span>)`;
+                if (ev.type === 'new_workspace')  desc = `<strong style="color:#e5e7eb;">${esc(ev.data.name)}</strong> created by ${esc(ev.data.owner?.username || '—')}`;
+                if (ev.type === 'new_product')    desc = `<strong style="color:#e5e7eb;">${esc(ev.data.name)}</strong> added to ${esc(ev.data.workspace?.name || '—')}`;
+                if (ev.type === 'new_license')    desc = `License for <strong style="color:#e5e7eb;">${esc(ev.data.product?.name || '—')}</strong> assigned to ${esc(ev.data.assignedToUser?.username || 'guest')}`;
+                if (ev.type === 'staff_action')   desc = `<strong style="color:#e5e7eb;">${esc(ev.data.user?.username || '—')}</strong>: ${esc(ev.data.action)}`;
+                return `<div class="activity-item">
+                    <div class="activity-dot" style="background:${cfg.dot};"></div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:0.8125rem;color:#9ca3af;">${desc}</div>
+                        <div style="font-size:0.6875rem;color:#4b5563;margin-top:0.15rem;">${timeAgo(ev.ts)}</div>
+                    </div>
+                    <span style="font-size:0.625rem;font-weight:600;color:${cfg.color};background:rgba(0,0,0,0.3);border-radius:0.375rem;padding:0.15rem 0.4rem;white-space:nowrap;flex-shrink:0;">${cfg.label}</span>
+                </div>`;
+            }).join('');
+        })() : Array(8).fill(`<div class="activity-item"><div class="skeleton" style="width:0.5rem;height:0.5rem;border-radius:50%;flex-shrink:0;margin-top:0.375rem;"></div><div style="flex:1;"><div class="skeleton" style="height:0.75rem;width:70%;margin-bottom:0.25rem;"></div><div class="skeleton" style="height:0.625rem;width:30%;"></div></div></div>`).join('');
+
+        body.innerHTML = statsHtml + `
+            <div style="display:grid;grid-template-columns:1fr;gap:1rem;">
+                <div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;padding:1.25rem;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+                        <h3 style="font-size:0.875rem;font-weight:700;color:#fff;margin:0;">Recent Activity</h3>
+                        <button id="refreshActivityBtn" class="btn btn-ghost btn-sm">Refresh</button>
+                    </div>
+                    <div id="activity-feed" style="max-height:28rem;overflow-y:auto;">${activityHtml}</div>
+                </div>
             </div>
         `;
+        document.getElementById('refreshActivityBtn')?.addEventListener('click', () => {
+            state.activity = null;
+            renderDashboard();
+            fetchActivity();
+        });
     }
 
     // ─── Users ────────────────────────────────────────────────────────────────
     function renderUsers() {
-        setHeader('Users', 'Search, view, edit, and moderate user accounts');
+        setHeader('Users', 'Search by username, email, Discord ID, or Roblox ID');
         document.getElementById('page-body').innerHTML = `
             <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
-                <div class="search-wrap" style="flex:1;max-width:22rem;">
+                <div class="search-wrap" style="flex:1;max-width:26rem;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="searchInput" data-tab="users" placeholder="Search by username or email…" value="${esc(state.users.searchTerm)}" class="form-input">
+                    <input type="text" id="searchInput" data-tab="users" placeholder="Username, email, Discord ID, Roblox ID…" value="${esc(state.users.searchTerm)}" class="form-input">
                 </div>
             </div>
             <div id="table-container"></div>
@@ -516,10 +585,13 @@
                                     <td><span class="badge ${ws.isSuspended ? 'suspended' : 'active'}">${ws.isSuspended ? 'Suspended' : 'Active'}</span></td>
                                     <td>${ws.isSuspended && ws.suspendReason ? `<span class="reason-pill" title="${esc(ws.suspendReason)}">${esc(ws.suspendReason)}</span>` : '<span style="color:#374151;">—</span>'}</td>
                                     <td style="text-align:right;">
-                                        ${ws.isSuspended
-                                            ? `<button data-id="${ws.id}" data-type="workspaces" data-suspended="false" class="btn btn-success btn-sm suspend-btn">Unsuspend</button>`
-                                            : `<button data-id="${ws.id}" data-type="workspaces" data-suspended="true" data-name="${esc(ws.name)}" class="btn btn-warning btn-sm suspend-btn">Suspend</button>`
-                                        }
+                                        <div style="display:inline-flex;gap:0.375rem;">
+                                            <button data-id="${ws.id}" class="btn btn-ghost btn-sm view-workspace-btn">View</button>
+                                            ${ws.isSuspended
+                                                ? `<button data-id="${ws.id}" data-type="workspaces" data-suspended="false" class="btn btn-success btn-sm suspend-btn">Unsuspend</button>`
+                                                : `<button data-id="${ws.id}" data-type="workspaces" data-suspended="true" data-name="${esc(ws.name)}" class="btn btn-warning btn-sm suspend-btn">Suspend</button>`
+                                            }
+                                        </div>
                                     </td>
                                 </tr>
                             `).join('')}
@@ -533,12 +605,12 @@
 
     // ─── Products ─────────────────────────────────────────────────────────────
     function renderProducts() {
-        setHeader('Products', 'View and moderate all products');
+        setHeader('Products', 'Search by product name or workspace name');
         document.getElementById('page-body').innerHTML = `
             <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
-                <div class="search-wrap" style="flex:1;max-width:22rem;">
+                <div class="search-wrap" style="flex:1;max-width:26rem;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="searchInput" data-tab="products" placeholder="Search by name…" value="${esc(state.products.searchTerm)}" class="form-input">
+                    <input type="text" id="searchInput" data-tab="products" placeholder="Product name or workspace name…" value="${esc(state.products.searchTerm)}" class="form-input">
                 </div>
             </div>
             <div id="table-container"></div>
@@ -590,12 +662,12 @@
 
     // ─── Licenses ─────────────────────────────────────────────────────────────
     function renderLicenses() {
-        setHeader('Licenses', 'Search and view all licenses platform-wide');
+        setHeader('Licenses', 'Search by username, Roblox ID, product name, or workspace name');
         document.getElementById('page-body').innerHTML = `
             <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
-                <div class="search-wrap" style="flex:1;max-width:22rem;">
+                <div class="search-wrap" style="flex:1;max-width:28rem;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="searchInput" data-tab="licenses" placeholder="Search by username or Roblox ID…" value="${esc(state.licenses.searchTerm)}" class="form-input">
+                    <input type="text" id="searchInput" data-tab="licenses" placeholder="Username, Roblox ID, product name, workspace…" value="${esc(state.licenses.searchTerm)}" class="form-input">
                 </div>
             </div>
             <div id="table-container"></div>
@@ -648,6 +720,47 @@
             </div>
         `;
         renderPagination('licenses');
+    }
+
+    // ─── Coin Shop ────────────────────────────────────────────────────────────
+    function renderShop() {
+        setHeader('Coin Shop', 'View and edit shop item prices and descriptions');
+        const body = document.getElementById('page-body');
+        const items = state.shop.data;
+        if (!items.length) {
+            body.innerHTML = skeletonTable(4, 5);
+            return;
+        }
+        body.innerHTML = `
+            <div style="background:#13131f;border:1px solid rgba(255,255,255,0.06);border-radius:1rem;overflow:hidden;">
+                <div style="overflow-x:auto;">
+                    <table class="data-table">
+                        <thead><tr>
+                            <th>Item</th><th>Description</th><th>Price (coins)</th><th style="text-align:right;">Actions</th>
+                        </tr></thead>
+                        <tbody>
+                            ${items.map(item => `
+                                <tr>
+                                    <td>
+                                        <div style="font-weight:600;color:#e5e7eb;">${esc(item.name)}</div>
+                                        <div style="font-size:0.6875rem;color:#6b7280;font-family:monospace;">${esc(item.id)}</div>
+                                    </td>
+                                    <td style="color:#9ca3af;max-width:18rem;">${esc(item.description)}</td>
+                                    <td>
+                                        <span style="font-weight:700;color:#fbbf24;font-size:1rem;">${fmtNum(item.price)}</span>
+                                        <span style="color:#6b7280;font-size:0.75rem;margin-left:0.25rem;">coins</span>
+                                    </td>
+                                    <td style="text-align:right;">
+                                        <button data-item-id="${esc(item.id)}" class="btn btn-ghost btn-sm edit-shop-item-btn">Edit</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <p style="font-size:0.75rem;color:#4b5563;margin-top:0.75rem;">Note: price changes take effect immediately for new purchases. Changes are in-memory and reset on server restart.</p>
+        `;
     }
 
     // ─── Pagination ───────────────────────────────────────────────────────────
@@ -912,11 +1025,153 @@
         });
     }
 
+    function showViewWorkspaceModal(id) {
+        showModal(`
+            <div class="modal-box xwide">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
+                    <h2 style="font-size:1rem;font-weight:700;color:#fff;margin:0;">Workspace Details</h2>
+                    <button id="closeWsBtn" class="btn btn-ghost btn-sm">Close</button>
+                </div>
+                <div id="view-ws-content" style="min-height:6rem;">
+                    <div class="skeleton" style="height:1rem;width:60%;margin-bottom:0.75rem;"></div>
+                    <div class="skeleton" style="height:1rem;width:40%;margin-bottom:0.75rem;"></div>
+                    <div class="skeleton" style="height:1rem;width:70%;"></div>
+                </div>
+            </div>
+        `, async () => {
+            document.getElementById('closeWsBtn').onclick = closeModal;
+            const data = await api(`/api/v1/staff/workspaces/${id}`);
+            const vc = document.getElementById('view-ws-content');
+            if (!vc) return;
+            if (!data?.workspace) { vc.innerHTML = '<p style="color:#f87171;">Failed to load workspace.</p>'; return; }
+            const ws = data.workspace;
+            vc.innerHTML = `
+                <div style="display:flex;align-items:center;gap:0.875rem;margin-bottom:1.25rem;">
+                    ${ws.logoUrl ? `<img src="${esc(ws.logoUrl)}" style="width:3rem;height:3rem;border-radius:0.75rem;object-fit:cover;" onerror="this.style.display='none'">` : `<div style="width:3rem;height:3rem;border-radius:0.75rem;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);"></div>`}
+                    <div>
+                        <div style="font-size:1rem;font-weight:700;color:#fff;">${esc(ws.name)}</div>
+                        <div style="font-size:0.8125rem;color:#6b7280;">${esc(ws.description || 'No description')}</div>
+                        <span class="badge ${ws.isSuspended ? 'suspended' : 'active'}" style="margin-top:0.25rem;">${ws.isSuspended ? 'Suspended' : 'Active'}</span>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1.25rem;font-size:0.8125rem;">
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">Owner</div>
+                        <div style="display:flex;align-items:center;gap:0.375rem;">
+                            ${ws.owner?.avatar ? `<img src="${esc(ws.owner.avatar)}" style="width:1.25rem;height:1.25rem;border-radius:50%;object-fit:cover;">` : ''}
+                            <span style="font-weight:600;color:#e5e7eb;">${esc(ws.owner?.username || '—')}</span>
+                        </div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">Roblox Group ID</div>
+                        <div style="font-family:monospace;color:#9ca3af;">${esc(ws.robloxGroupId || '—')}</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">Products</div>
+                        <div style="font-weight:700;color:#e5e7eb;font-size:1rem;">${ws._count?.products ?? 0}</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.625rem;padding:0.75rem;">
+                        <div style="color:#6b7280;margin-bottom:0.25rem;">Members</div>
+                        <div style="font-weight:700;color:#e5e7eb;font-size:1rem;">${ws._count?.members ?? 0}</div>
+                    </div>
+                </div>
+
+                ${ws.products?.length ? `
+                    <div style="font-size:0.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:0.5rem;">Products</div>
+                    <div style="display:flex;flex-direction:column;gap:0.25rem;max-height:9rem;overflow-y:auto;margin-bottom:1rem;">
+                        ${ws.products.map(p => `
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:0.375rem 0.625rem;background:rgba(255,255,255,0.02);border-radius:0.375rem;font-size:0.8125rem;">
+                                <span style="color:#e5e7eb;font-weight:500;">${esc(p.name)}</span>
+                                <div style="display:flex;gap:0.5rem;align-items:center;">
+                                    <span style="color:#6b7280;font-size:0.75rem;">${p._count?.licenses ?? 0} licenses</span>
+                                    <span class="badge ${p.isSuspended ? 'suspended' : 'active'}" style="font-size:0.625rem;">${p.isSuspended ? 'Suspended' : 'Active'}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+
+                ${ws.members?.length ? `
+                    <div style="font-size:0.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:0.5rem;">Members</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:0.375rem;max-height:6rem;overflow-y:auto;margin-bottom:1rem;">
+                        ${ws.members.map(m => `
+                            <div style="display:flex;align-items:center;gap:0.375rem;padding:0.25rem 0.5rem;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:0.5rem;font-size:0.75rem;">
+                                ${m.user?.avatar ? `<img src="${esc(m.user.avatar)}" style="width:1rem;height:1rem;border-radius:50%;">` : ''}
+                                <span style="color:#9ca3af;">${esc(m.user?.username || '—')}</span>
+                                <span style="color:#4b5563;font-size:0.625rem;">${esc(m.role)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+
+                ${ws.auditLogs?.length ? `
+                    <div style="font-size:0.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:0.5rem;">Recent Audit Logs</div>
+                    <div style="display:flex;flex-direction:column;gap:0.25rem;max-height:8rem;overflow-y:auto;">
+                        ${ws.auditLogs.map(log => `
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:0.375rem 0.625rem;background:rgba(255,255,255,0.02);border-radius:0.375rem;font-size:0.75rem;">
+                                <span style="color:#9ca3af;">${esc(log.user?.username || '—')}: <span style="color:#e5e7eb;">${esc(log.action)}</span></span>
+                                <span style="color:#4b5563;white-space:nowrap;margin-left:0.5rem;">${timeAgo(log.createdAt)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            `;
+        });
+    }
+
+    function showEditShopItemModal(itemId) {
+        const item = state.shop.data.find(i => i.id === itemId);
+        if (!item) return;
+        showModal(`
+            <div class="modal-box">
+                <h2 style="font-size:1rem;font-weight:700;color:#fff;margin:0 0 0.375rem;">Edit Shop Item</h2>
+                <p style="font-size:0.8125rem;color:#6b7280;margin:0 0 1.25rem;font-family:monospace;">${esc(item.id)}</p>
+                <div style="display:flex;flex-direction:column;gap:0.875rem;">
+                    <div>
+                        <label class="form-label">Price (coins)</label>
+                        <input type="number" id="shop-price" value="${item.price}" min="0" class="form-input">
+                    </div>
+                    <div>
+                        <label class="form-label">Description</label>
+                        <input type="text" id="shop-desc" value="${esc(item.description)}" class="form-input">
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.5rem;">
+                    <button id="cancelShopBtn" class="btn btn-ghost">Cancel</button>
+                    <button id="confirmShopBtn" class="btn btn-primary">Save Changes</button>
+                </div>
+            </div>
+        `, () => {
+            document.getElementById('cancelShopBtn').onclick = closeModal;
+            document.getElementById('confirmShopBtn').onclick = async () => {
+                const price = parseInt(document.getElementById('shop-price').value);
+                const description = document.getElementById('shop-desc').value.trim();
+                if (isNaN(price) || price < 0) { toast('Price must be a non-negative number.', 'error'); return; }
+                if (!description) { toast('Description cannot be empty.', 'error'); return; }
+                const btn = document.getElementById('confirmShopBtn');
+                btn.disabled = true; btn.textContent = 'Saving…';
+                const result = await api(`/api/v1/staff/shop/${itemId}`, 'PATCH', { price, description });
+                if (result) {
+                    toast('Shop item updated.', 'success');
+                    closeModal();
+                    fetchShop();
+                } else { btn.disabled = false; btn.textContent = 'Save Changes'; }
+            };
+        });
+    }
+
     // ─── Data fetching ────────────────────────────────────────────────────────
     async function fetchStats() {
         if (!apiKey) return;
         const data = await api('/api/v1/staff/stats');
         if (data) { state.stats = data; if (state.activeTab === 'dashboard') renderDashboard(); }
+    }
+
+    async function fetchActivity() {
+        if (!apiKey) return;
+        const data = await api('/api/v1/staff/activity');
+        if (data) { state.activity = data; if (state.activeTab === 'dashboard') renderDashboard(); }
     }
 
     async function fetchUsers() {
@@ -963,13 +1218,20 @@
         if (state.activeTab === 'licenses') renderLicensesTable();
     }
 
+    async function fetchShop() {
+        if (!apiKey) return;
+        const data = await api('/api/v1/staff/shop');
+        if (data) { state.shop.data = data.items || []; if (state.activeTab === 'shop') renderShop(); }
+    }
+
     function fetchDataForTab() {
         switch (state.activeTab) {
-            case 'dashboard':  fetchStats();      break;
+            case 'dashboard':  fetchStats(); fetchActivity(); break;
             case 'users':      fetchUsers();      break;
             case 'workspaces': fetchWorkspaces(); break;
             case 'products':   fetchProducts();   break;
             case 'licenses':   fetchLicenses();   break;
+            case 'shop':       fetchShop();       break;
         }
     }
 
@@ -1023,6 +1285,10 @@
             showEditUserModal(btn.dataset.id);
         } else if (btn.classList.contains('coins-btn')) {
             showCoinsModal(btn.dataset.id);
+        } else if (btn.classList.contains('view-workspace-btn')) {
+            showViewWorkspaceModal(btn.dataset.id);
+        } else if (btn.classList.contains('edit-shop-item-btn')) {
+            showEditShopItemModal(btn.dataset.itemId);
         } else if (btn.classList.contains('suspend-btn')) {
             const { id, type } = btn.dataset;
             const suspending = btn.dataset.suspended === 'true';
@@ -1038,11 +1304,6 @@
     });
 
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-
-    // Spin animation
-    const styleEl = document.createElement('style');
-    styleEl.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
-    document.head.appendChild(styleEl);
 
     // ─── Boot ─────────────────────────────────────────────────────────────────
     async function verifyAndLoad() {
