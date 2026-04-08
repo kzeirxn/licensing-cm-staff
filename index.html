@@ -1243,7 +1243,7 @@
 
     // ─── Event listeners ─────────────────────────────────────────────────────
     document.getElementById('loginBtn').addEventListener('click', () => {
-        window.location.href = `${API_BASE_URL}/api/v1/auth/discord?returnTo=${encodeURIComponent(STAFF_PORTAL_URL)}`;
+        window.location.href = `${API_BASE_URL}/api/v1/auth/discord?portal=staff&returnTo=${encodeURIComponent(STAFF_PORTAL_URL)}`;
     });
 
     document.getElementById('logoutBtn').addEventListener('click', logout);
